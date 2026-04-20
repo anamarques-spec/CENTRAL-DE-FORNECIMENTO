@@ -1,0 +1,23 @@
+# Variáveis de ambiente (senhas, tokens, API keys)
+.env
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Node.js (se usar)
+node_modules/
+
+# Python (se usar)
+__pycache__/
+*.pyc
+venv/
+
+# Arquivos temporários
+temp/
+*.tmp
+*.log
+
+# IDE
+.vscode/
+.idea/
