@@ -1,12 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseConfigured } from '@/lib/supabase'
 import { calcularRisco, RISCO_CLASSES, RISCO_LABEL, ROW_CLASSES } from '@/lib/risco'
 import type { Produto, RiscoNivel } from '@/types/produto'
 import FormCadastroProduto from './FormCadastroProduto'
 
 export default function MatrizRiscoView() {
+  if (!supabaseConfigured) {
+    return (
+      <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-6">
+        <p className="font-semibold text-yellow-800">Configuração pendente</p>
+        <p className="mt-1 text-sm text-yellow-700">
+          Preencha <code className="font-mono bg-yellow-100 px-1 rounded">src/.env.local</code> com{' '}
+          <code className="font-mono bg-yellow-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_URL</code> e{' '}
+          <code className="font-mono bg-yellow-100 px-1 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> e reinicie o servidor.
+        </p>
+      </div>
+    )
+  }
+
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [loading, setLoading] = useState(true)
   const [mostrarForm, setMostrarForm] = useState(false)
