@@ -2,6 +2,8 @@
 
 > Bootcamp Claude Code — Moon Ventures (2026)
 
+_Última atualização: 21/04 10:52_
+
 ## O que é isso?
 
 Espaço de trabalho do seu projeto individual no bootcamp. Em 1 dia, você constrói uma ferramenta pra resolver um problema real da Moon, usando Claude Code como copiloto.
