@@ -1,19 +1,26 @@
 import type { Produto, RiscoNivel } from '@/types/produto'
 
-export function calcularRisco(p: Produto): RiscoNivel {
-  const fornecedorUnico = p.qtd_fornecedores_alternativos === 0
-  const leadTimeAlto = p.lead_time_dias > 15
-  const capacidadeExcedida = p.volume_projetado_mensal > p.capacidade_fornecedor_mensal && p.capacidade_fornecedor_mensal > 0
+// Risco = representatividade no faturamento total × nº de fornecedores
+// Tabela:
+//            | 0-1 forn  | 2 forn   | 3+ forn  |
+// > 5% total | CRÍTICO   | CRÍTICO  | ATENÇÃO  |
+// 1-5% total | CRÍTICO   | ATENÇÃO  | OK       |
+// < 1% total | ATENÇÃO   | OK       | OK       |
+export function calcularRisco(
+  produto: Produto,
+  totalMetaGeral: number,
+  qtdFornecedores: number
+): RiscoNivel {
+  const rep = totalMetaGeral > 0 ? produto.meta_faturamento_anual / totalMetaGeral : 0
 
-  // Produto representativo (curva A) com único fornecedor = risco crítico
-  if (p.criticidade === 'A' && fornecedorUnico) return 'CRITICO'
-  // Volume projetado ultrapassa capacidade do fornecedor = risco crítico
-  if (capacidadeExcedida) return 'CRITICO'
-  // Lead time alto = atenção
-  if (leadTimeAlto) return 'ATENCAO'
-  // Produto curva B com único fornecedor = atenção
-  if (p.criticidade === 'B' && fornecedorUnico) return 'ATENCAO'
+  const repNivel = rep > 0.05 ? 'alta' : rep >= 0.01 ? 'media' : 'baixa'
+  const fornNivel = qtdFornecedores <= 1 ? 'unico' : qtdFornecedores === 2 ? 'dois' : 'multiplos'
 
+  if (repNivel === 'alta' && (fornNivel === 'unico' || fornNivel === 'dois')) return 'CRITICO'
+  if (repNivel === 'alta') return 'ATENCAO'
+  if (repNivel === 'media' && fornNivel === 'unico') return 'CRITICO'
+  if (repNivel === 'media' && fornNivel === 'dois') return 'ATENCAO'
+  if (repNivel === 'baixa' && fornNivel === 'unico') return 'ATENCAO'
   return 'OK'
 }
 

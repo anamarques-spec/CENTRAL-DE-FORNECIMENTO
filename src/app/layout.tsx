@@ -19,8 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/matriz-risco" className="text-sm text-gray-600 hover:text-gray-900">
               Matriz de Risco
             </a>
-            <a href="/importar" className="text-sm text-gray-600 hover:text-gray-900">
-              Sincronizar Planilha
+            <a href="/fornecedores" className="text-sm text-gray-600 hover:text-gray-900">
+              Fornecedores
             </a>
           </div>
         </nav>

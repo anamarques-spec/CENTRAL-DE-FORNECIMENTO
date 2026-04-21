@@ -22,6 +22,24 @@ CREATE POLICY "acesso_publico_produtos"
   USING (true)
   WITH CHECK (true);
 
--- Migration: suporte a metas (rodar se a tabela já existe)
+-- Migration: suporte a metas e fornecedores (rodar se a tabela já existe)
 ALTER TABLE produtos ADD COLUMN IF NOT EXISTS meta_faturamento_anual BIGINT DEFAULT 0;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS qtd_vendida_anual INTEGER DEFAULT 0;
 ALTER TABLE produtos ADD CONSTRAINT IF NOT EXISTS produtos_nome_unique UNIQUE (nome);
+
+-- Tabela de fornecedores por produto
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  produto_id UUID NOT NULL REFERENCES produtos(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  lead_time_dias INTEGER NOT NULL DEFAULT 0,
+  capacidade_mensal INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE fornecedores ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "acesso_publico_fornecedores"
+  ON fornecedores FOR ALL
+  USING (true)
+  WITH CHECK (true);

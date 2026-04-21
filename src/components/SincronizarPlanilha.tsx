@@ -21,7 +21,11 @@ const CURVA_CLASSES: Record<string, string> = {
   C: 'bg-green-100 text-green-800',
 }
 
-export default function SincronizarPlanilha() {
+interface Props {
+  onSaved?: () => void
+}
+
+export default function SincronizarPlanilha({ onSaved }: Props = {}) {
   const router = useRouter()
   const [estado, setEstado] = useState<Estado>('idle')
   const [produtos, setProdutos] = useState<ProdutoMeta[]>([])
@@ -74,6 +78,7 @@ export default function SincronizarPlanilha() {
     }
     setImportados(count ?? registros.length)
     setEstado('sucesso')
+    onSaved?.()
   }
 
   const contagem = {

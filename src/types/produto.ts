@@ -13,6 +13,7 @@ export interface Produto {
   volume_projetado_mensal: number
   capacidade_fornecedor_mensal: number
   meta_faturamento_anual: number
+  qtd_vendida_anual: number
   created_at: string
 }
 
