@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { parseFornecedoresTab, parsePedidosTab } from '@/lib/parseFornecedoresSheet'
 import type { Produto } from '@/types/produto'
 import type { Fornecedor, FornecedorInsert } from '@/types/fornecedor'
+import CapacidadeChart from './CapacidadeChart'
 
 interface ResumoFornecedor {
   nome: string
@@ -179,6 +180,9 @@ export default function FornecedoresView() {
 
   return (
     <div className="space-y-6">
+      {/* Gráfico de capacidade e projeção */}
+      <CapacidadeChart />
+
       {/* Painel de Sync */}
       <div className="bg-white border border-gray-200 rounded-lg p-5">
         <div className="flex items-center justify-between">
