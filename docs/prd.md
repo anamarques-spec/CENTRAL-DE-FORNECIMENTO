@@ -9,11 +9,11 @@ O setor de compras não tem visão consolidada da cadeia de fornecimento. Ausên
 
 ## Usuário
 
-**Quem vai usar essa ferramenta?** (preencher às 13h)
+**Quem vai usar essa ferramenta?** Analistas, estagiarios e compradores do time de sourcing. Como tambpem a liderança e diretoria
 
-*Ex: "Analistas do time de sourcing que hoje abrem múltiplos sistemas e planilhas para ter uma visão de risco e performance de fornecedores."*
+Analistas, estagiarios e compradores do time de sourcing. Como tambpem a liderança e diretoria
 
-**O que o usuário faz hoje pra resolver isso (manual/workaround)?** (preencher às 13h)
+**O que o usuário faz hoje pra resolver isso (manual/workaround)?** Usa planilhas Excel manuais, consulta vários sistemas separados (TOTVS, Bling, ClickUp) sem integração
 
 ## Objetivo
 
@@ -23,9 +23,13 @@ Dashboard centralizado de fornecimento que integra dados de pedidos, estoque e f
 
 *Preencher às 13h. Máximo 5 — se passou disso, cortar escopo.*
 
-- [ ] Requisito crítico 1
-- [ ] Requisito crítico 2
-- [ ] Requisito crítico 3
+- [ ] Visualizar matriz de risco por produto e fornecedor
+- [ ] Dashboard com KPIs consolidados (OTD, lead time, capacidade)
+- [ ] Projeção de compras vs metas de faturamento
+- [ ] Visão consolidada por fornecedor (performance, capacidade, lead time, dependência)
+- [ ] Pipeline de fornecedores (prospecção + etapas de homologação)
+
+
 
 ## Fora do escopo (o que NÃO vai ter hoje)
 
@@ -36,11 +40,14 @@ Dashboard centralizado de fornecimento que integra dados de pedidos, estoque e f
 - Integração real com TOTVS ou Bling — simular com dados mock
 - Integração real com ClickUp — simular com dados mock
 - Testes automatizados
-- <adicione os seus>
+- Automação de follow-up com fornecedores
+- Integração com envio de e-mails ou notificações automáticas
+- Módulo completo de homologação (apenas visualização inicial do pipeline)
+- Customização avançada de dashboards
 
 ## Métrica de sucesso
 
-**Como você vai saber que funciona?** 1 frase concreta com ação + resultado.
+**Como você vai saber que funciona?** Usuário acessa o dashboard e consolida em um único ambiente a visão de pedidos em aberto, histórico e performance por fornecedor, entregas projetadas no CD, posição por produto e identificação de fornecedores críticos, permitindo decisões rápidas e redução de risco de abastecimento.
 
 *Ex: "Ana abre a URL, visualiza a matriz de risco dos produtos, identifica os fornecedores críticos de único fornecedor e exporta o relatório — e os dados refletem o que foi inserido no Supabase."*
 
@@ -48,11 +55,12 @@ Dashboard centralizado de fornecimento que integra dados de pedidos, estoque e f
 
 - **Hosting**: Vercel
 - **Banco + auth**: Supabase
-- **Linguagem/framework**: _____ (preencher quando decidir — sugestão: Next.js + TypeScript)
-- **Outras libs**: _____ (preencher conforme for usando)
+- **Linguagem/framework**: _____ Next.js + TypeScript
+- **Outras libs**: _____ Tailwind CSS
 
 ## Decisões de arquitetura (append ao longo do dia)
 
 *Use essa seção pra registrar escolhas técnicas importantes à medida que aparecem.*
 
-- <ex: "decidi usar Supabase Auth em vez de rolar JWT próprio — economiza 2h">
+- Dados inseridos via formulário de cadastro dentro do app (não direto no Supabase)
+- Prioridade de desenvolvimento: (1) Matriz de risco → (2) KPIs → (3) Projeção de compras → (4) Visão por fornecedor → (5) Pipeline de homologação
