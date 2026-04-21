@@ -2,20 +2,28 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { parseFornecedoresTab, parsePedidosTab } from '@/lib/parseFornecedoresSheet'
 import type { Produto } from '@/types/produto'
 import type { Fornecedor, FornecedorInsert } from '@/types/fornecedor'
+import type { Pedido } from '@/types/pedido'
 
 const EMPTY_FORM = { nome: '', lead_time_dias: 0, capacidade_mensal: 0 }
 
 export default function FornecedoresView() {
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
+  const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
-  const carregar = useCallback(async () => {
+  // sync state
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'carregando' | 'preview' | 'importando' | 'done' | 'erro'>('idle')
+  const [syncPreview, setSyncPreview] = useState<{ fornecedores: number; fornecedoresSkip: number; pedidos: number } | null>(null)
+  const [syncErro, setSyncErro] = useState('')
+
+  const carregarBase = useCallback(async () => {
     const [{ data: prods }, { data: forns }] = await Promise.all([
       supabase.from('produtos').select('*').order('nome'),
       supabase.from('fornecedores').select('*').order('nome'),
@@ -26,12 +34,108 @@ export default function FornecedoresView() {
     if (!produtoSelecionado && lista.length > 0) setProdutoSelecionado(lista[0])
   }, [produtoSelecionado])
 
-  useEffect(() => { carregar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregarBase() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carrega pedidos sempre que o produto selecionado ou fornecedores mudam
+  useEffect(() => {
+    if (!produtoSelecionado) { setPedidos([]); return }
+    const nomes = fornecedores.filter((f) => f.produto_id === produtoSelecionado.id).map((f) => f.nome)
+    if (nomes.length === 0) { setPedidos([]); return }
+    supabase
+      .from('pedidos')
+      .select('*')
+      .in('fornecedor_nome', nomes)
+      .gt('qtd_pendente', 0)
+      .order('previsao_atual', { ascending: true })
+      .then(({ data }) => setPedidos(data ?? []))
+  }, [produtoSelecionado, fornecedores])
 
   const fornsDoP = produtoSelecionado
     ? fornecedores.filter((f) => f.produto_id === produtoSelecionado.id)
     : []
 
+  // ── Sync do Google Sheets ──────────────────────────────────────────
+  async function iniciarSync() {
+    setSyncStatus('carregando')
+    setSyncErro('')
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch('/api/fornecedores-sheets?tab=fornecedores'),
+        fetch('/api/fornecedores-sheets?tab=pedidos'),
+      ])
+      if (!r1.ok || !r2.ok) throw new Error('Erro ao buscar planilha. Verifique se está pública.')
+
+      const [csv1, csv2] = await Promise.all([r1.text(), r2.text()])
+      const fornRows = parseFornecedoresTab(csv1)
+      const pedRows = parsePedidosTab(csv2)
+
+      // Quantos produtos existem na base para fazer o match
+      const { data: prodExistentes } = await supabase.from('produtos').select('id,nome')
+      const nomeParaId = new Map((prodExistentes ?? []).map((p) => [p.nome.trim(), p.id]))
+      const matchados = fornRows.filter((r) => nomeParaId.has(r.produtoNome))
+      const skip = fornRows.length - matchados.length
+
+      setSyncPreview({ fornecedores: matchados.length, fornecedoresSkip: skip, pedidos: pedRows.length })
+      setSyncStatus('preview')
+    } catch (e: unknown) {
+      setSyncErro(e instanceof Error ? e.message : 'Erro desconhecido')
+      setSyncStatus('erro')
+    }
+  }
+
+  async function confirmarSync() {
+    setSyncStatus('importando')
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch('/api/fornecedores-sheets?tab=fornecedores'),
+        fetch('/api/fornecedores-sheets?tab=pedidos'),
+      ])
+      const [csv1, csv2] = await Promise.all([r1.text(), r2.text()])
+      const fornRows = parseFornecedoresTab(csv1)
+      const pedRows = parsePedidosTab(csv2)
+
+      const { data: prodExistentes } = await supabase.from('produtos').select('id,nome')
+      const nomeParaId = new Map((prodExistentes ?? []).map((p) => [p.nome.trim(), p.id]))
+
+      // Upsert fornecedores por (produto_id, nome)
+      const fornInsertar: FornecedorInsert[] = fornRows
+        .filter((r) => nomeParaId.has(r.produtoNome))
+        .map((r) => ({
+          produto_id: nomeParaId.get(r.produtoNome)!,
+          nome: r.fornecedorNome,
+          lead_time_dias: r.leadTimeDias,
+          capacidade_mensal: 0,
+        }))
+
+      if (fornInsertar.length > 0) {
+        await supabase.from('fornecedores').upsert(fornInsertar, { onConflict: 'produto_id,nome' })
+      }
+
+      // Upsert pedidos em lotes de 500 (Supabase tem limite por requisição)
+      const LOTE = 500
+      for (let i = 0; i < pedRows.length; i += LOTE) {
+        const lote = pedRows.slice(i, i + LOTE).map((r) => ({
+          cod: r.cod,
+          pedido: r.pedido,
+          produto_sku: r.produtoSku,
+          fornecedor_nome: r.fornecedorNome,
+          qtd_solicitada: r.qtdSolicitada,
+          qtd_pendente: r.qtdPendente,
+          previsao_atual: r.previsaoAtual,
+          data_compra: r.dataCompra,
+        }))
+        await supabase.from('pedidos').upsert(lote, { onConflict: 'cod' })
+      }
+
+      setSyncStatus('done')
+      carregarBase()
+    } catch (e: unknown) {
+      setSyncErro(e instanceof Error ? e.message : 'Erro desconhecido')
+      setSyncStatus('erro')
+    }
+  }
+
+  // ── Fornecedor manual ──────────────────────────────────────────────
   async function adicionarFornecedor(e: React.FormEvent) {
     e.preventDefault()
     if (!produtoSelecionado || !form.nome.trim()) return
@@ -42,7 +146,7 @@ export default function FornecedoresView() {
     setSalvando(false)
     if (error) { setErro(error.message); return }
     setForm(EMPTY_FORM)
-    carregar()
+    carregarBase()
   }
 
   async function removerFornecedor(id: string) {
@@ -50,102 +154,206 @@ export default function FornecedoresView() {
     setFornecedores((prev) => prev.filter((f) => f.id !== id))
   }
 
+  const totalPendente = pedidos.reduce((s, p) => s + p.qtd_pendente, 0)
+
   return (
-    <div className="flex gap-6 h-[calc(100vh-120px)]">
-      {/* Lista de produtos */}
-      <div className="w-64 shrink-0 bg-white border border-gray-200 rounded-lg overflow-y-auto">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Produtos</p>
-        </div>
-        {produtos.map((p) => {
-          const count = fornecedores.filter((f) => f.produto_id === p.id).length
-          const ativo = produtoSelecionado?.id === p.id
-          return (
+    <div className="space-y-6">
+      {/* Painel de Sync */}
+      <div className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Google Sheets — Fornecedores e Entregas</p>
+            <p className="text-xs text-gray-400 mt-0.5">Importa fornecedores por produto + pedidos pendentes</p>
+          </div>
+          {(syncStatus === 'idle' || syncStatus === 'erro' || syncStatus === 'done') && (
             <button
-              key={p.id}
-              onClick={() => setProdutoSelecionado(p)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${ativo ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
+              onClick={iniciarSync}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
             >
-              <p className={`text-sm font-medium truncate ${ativo ? 'text-blue-700' : 'text-gray-800'}`}>{p.nome}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Curva {p.criticidade} · {count} fornecedor{count !== 1 ? 'es' : ''}
-              </p>
+              {syncStatus === 'done' ? 'Sincronizar novamente' : 'Sincronizar do Sheets'}
             </button>
-          )
-        })}
-        {produtos.length === 0 && (
-          <p className="text-sm text-gray-400 px-4 py-6 text-center">Nenhum produto cadastrado.</p>
+          )}
+          {syncStatus === 'carregando' && <span className="text-sm text-gray-500">Buscando dados...</span>}
+          {syncStatus === 'importando' && <span className="text-sm text-gray-500">Importando...</span>}
+        </div>
+
+        {syncStatus === 'preview' && syncPreview && (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="rounded bg-blue-50 border border-blue-200 p-3">
+                <p className="text-2xl font-bold text-blue-700">{syncPreview.fornecedores}</p>
+                <p className="text-xs text-blue-600 mt-0.5">fornecedores para importar</p>
+              </div>
+              <div className="rounded bg-gray-50 border border-gray-200 p-3">
+                <p className="text-2xl font-bold text-gray-500">{syncPreview.fornecedoresSkip}</p>
+                <p className="text-xs text-gray-400 mt-0.5">produtos não encontrados na base</p>
+              </div>
+              <div className="rounded bg-blue-50 border border-blue-200 p-3">
+                <p className="text-2xl font-bold text-blue-700">{syncPreview.pedidos.toLocaleString('pt-BR')}</p>
+                <p className="text-xs text-blue-600 mt-0.5">pedidos para importar</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={confirmarSync} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                Confirmar importação
+              </button>
+              <button onClick={() => setSyncStatus('idle')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {syncStatus === 'done' && (
+          <p className="mt-3 text-sm text-green-700 font-medium">Importação concluída com sucesso.</p>
+        )}
+        {syncStatus === 'erro' && (
+          <p className="mt-3 text-sm text-red-600">{syncErro}</p>
         )}
       </div>
 
-      {/* Painel de fornecedores */}
-      <div className="flex-1 space-y-6 overflow-y-auto">
-        {!produtoSelecionado ? (
-          <p className="text-gray-400 text-sm">Selecione um produto.</p>
-        ) : (
-          <>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">{produtoSelecionado.nome}</h2>
-              <p className="text-sm text-gray-500">Curva {produtoSelecionado.criticidade} · {fornsDoP.length} fornecedor{fornsDoP.length !== 1 ? 'es' : ''} cadastrado{fornsDoP.length !== 1 ? 's' : ''}</p>
-            </div>
-
-            {/* Tabela de fornecedores */}
-            {fornsDoP.length > 0 && (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Fornecedor</th>
-                      <th className="px-4 py-3 text-center">Lead time</th>
-                      <th className="px-4 py-3 text-center">Capacidade/mês</th>
-                      <th className="px-4 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {fornsDoP.map((f) => (
-                      <tr key={f.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-900">{f.nome}</td>
-                        <td className="px-4 py-3 text-center">{f.lead_time_dias}d</td>
-                        <td className="px-4 py-3 text-center">{f.capacidade_mensal.toLocaleString('pt-BR')}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => removerFornecedor(f.id)}
-                            className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                          >
-                            Remover
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Formulário de adição */}
-            <form onSubmit={adicionarFornecedor} className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-800">Adicionar fornecedor</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="flex flex-col gap-1 sm:col-span-1">
-                  <span className="text-xs font-medium text-gray-600">Nome *</span>
-                  <input type="text" value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} required className="input" placeholder="Ex: Fornecedor ABC" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-600">Lead time (dias)</span>
-                  <input type="number" min={0} value={form.lead_time_dias} onChange={(e) => setForm((p) => ({ ...p, lead_time_dias: Number(e.target.value) }))} className="input" />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-gray-600">Capacidade/mês (unid.)</span>
-                  <input type="number" min={0} value={form.capacidade_mensal} onChange={(e) => setForm((p) => ({ ...p, capacidade_mensal: Number(e.target.value) }))} className="input" />
-                </label>
-              </div>
-              {erro && <p className="text-sm text-red-600">{erro}</p>}
-              <button type="submit" disabled={salvando} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                {salvando ? 'Salvando...' : 'Adicionar fornecedor'}
+      {/* Master-detail */}
+      <div className="flex gap-6" style={{ minHeight: '60vh' }}>
+        {/* Lista de produtos */}
+        <div className="w-64 shrink-0 bg-white border border-gray-200 rounded-lg overflow-y-auto">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Produtos</p>
+          </div>
+          {produtos.map((p) => {
+            const count = fornecedores.filter((f) => f.produto_id === p.id).length
+            const ativo = produtoSelecionado?.id === p.id
+            return (
+              <button
+                key={p.id}
+                onClick={() => setProdutoSelecionado(p)}
+                className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${ativo ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''}`}
+              >
+                <p className={`text-sm font-medium truncate ${ativo ? 'text-blue-700' : 'text-gray-800'}`}>{p.nome}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Curva {p.criticidade} · {count} forn.
+                </p>
               </button>
-            </form>
-          </>
-        )}
+            )
+          })}
+          {produtos.length === 0 && (
+            <p className="text-sm text-gray-400 px-4 py-6 text-center">Nenhum produto.</p>
+          )}
+        </div>
+
+        {/* Painel direito */}
+        <div className="flex-1 space-y-6 overflow-y-auto">
+          {!produtoSelecionado ? (
+            <p className="text-gray-400 text-sm">Selecione um produto.</p>
+          ) : (
+            <>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">{produtoSelecionado.nome}</h2>
+                <p className="text-sm text-gray-500">
+                  Curva {produtoSelecionado.criticidade} · {fornsDoP.length} fornecedor{fornsDoP.length !== 1 ? 'es' : ''}
+                </p>
+              </div>
+
+              {/* Fornecedores */}
+              {fornsDoP.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Fornecedor</th>
+                        <th className="px-4 py-3 text-center">Lead time</th>
+                        <th className="px-4 py-3 text-center">Capacidade/mês</th>
+                        <th className="px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {fornsDoP.map((f) => (
+                        <tr key={f.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-900">{f.nome}</td>
+                          <td className="px-4 py-3 text-center">{f.lead_time_dias > 0 ? `${f.lead_time_dias}d` : '—'}</td>
+                          <td className="px-4 py-3 text-center">{f.capacidade_mensal > 0 ? f.capacidade_mensal.toLocaleString('pt-BR') : '—'}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button onClick={() => removerFornecedor(f.id)} className="text-xs text-red-500 hover:text-red-700 hover:underline">
+                              Remover
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Entregas pendentes */}
+              {pedidos.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-800">Entregas pendentes</h3>
+                    <span className="text-xs text-gray-500">
+                      {pedidos.length} pedidos · <span className="font-medium text-gray-700">{totalPendente.toLocaleString('pt-BR')} unidades pendentes</span>
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Produto (SKU)</th>
+                          <th className="px-4 py-3 text-left">Pedido</th>
+                          <th className="px-4 py-3 text-center">Qtd solicitada</th>
+                          <th className="px-4 py-3 text-center">Qtd pendente</th>
+                          <th className="px-4 py-3 text-center">Previsão de entrega</th>
+                          <th className="px-4 py-3 text-left">Fornecedor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {pedidos.map((p) => (
+                          <tr key={p.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-gray-800 max-w-[200px] truncate" title={p.produto_sku}>{p.produto_sku}</td>
+                            <td className="px-4 py-2 text-gray-600">{p.pedido}</td>
+                            <td className="px-4 py-2 text-center">{p.qtd_solicitada.toLocaleString('pt-BR')}</td>
+                            <td className="px-4 py-2 text-center font-medium text-orange-700">{p.qtd_pendente.toLocaleString('pt-BR')}</td>
+                            <td className="px-4 py-2 text-center">
+                              {p.previsao_atual
+                                ? new Date(p.previsao_atual + 'T00:00:00').toLocaleDateString('pt-BR')
+                                : '—'}
+                            </td>
+                            <td className="px-4 py-2 text-gray-500 text-xs">{p.fornecedor_nome}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {fornsDoP.length > 0 && pedidos.length === 0 && (
+                <p className="text-sm text-gray-400">Nenhuma entrega pendente para este fornecedor.</p>
+              )}
+
+              {/* Form adicionar fornecedor manualmente */}
+              <form onSubmit={adicionarFornecedor} className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-800">Adicionar fornecedor manualmente</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-600">Nome *</span>
+                    <input type="text" value={form.nome} onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} required className="input" placeholder="Ex: Fornecedor ABC" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-600">Lead time (dias)</span>
+                    <input type="number" min={0} value={form.lead_time_dias} onChange={(e) => setForm((p) => ({ ...p, lead_time_dias: Number(e.target.value) }))} className="input" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-600">Capacidade/mês (unid.)</span>
+                    <input type="number" min={0} value={form.capacidade_mensal} onChange={(e) => setForm((p) => ({ ...p, capacidade_mensal: Number(e.target.value) }))} className="input" />
+                  </label>
+                </div>
+                {erro && <p className="text-sm text-red-600">{erro}</p>}
+                <button type="submit" disabled={salvando} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                  {salvando ? 'Salvando...' : 'Adicionar fornecedor'}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

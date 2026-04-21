@@ -43,3 +43,26 @@ CREATE POLICY "acesso_publico_fornecedores"
   ON fornecedores FOR ALL
   USING (true)
   WITH CHECK (true);
+
+-- Unique para upsert por produto+nome
+ALTER TABLE fornecedores ADD CONSTRAINT IF NOT EXISTS fornecedores_produto_nome_unique UNIQUE (produto_id, nome);
+
+-- Tabela de pedidos/entregas pendentes
+CREATE TABLE IF NOT EXISTS pedidos (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  cod TEXT UNIQUE NOT NULL,
+  pedido TEXT,
+  produto_sku TEXT NOT NULL,
+  fornecedor_nome TEXT NOT NULL,
+  qtd_solicitada INTEGER DEFAULT 0,
+  qtd_pendente INTEGER DEFAULT 0,
+  previsao_atual DATE,
+  data_compra DATE
+);
+
+ALTER TABLE pedidos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "acesso_publico_pedidos"
+  ON pedidos FOR ALL
+  USING (true)
+  WITH CHECK (true);
