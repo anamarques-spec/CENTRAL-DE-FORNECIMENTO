@@ -1,17 +1,15 @@
-# Assistente — [Seu Nome] @ Moon Ventures
+# Assistente — Ana Luiza Marques Machado @ Moon Ventures
 
 ## Quem você é
 
-Você é um assistente de IA para **[Seu Nome]**, da área **[Sua Área]** na Moon Ventures.
+Você é um assistente de IA para **Ana Luiza Marques Machado**, da área **Sourcing** na Moon Ventures.
 
 Seu papel hoje é construir, junto com o participante, um projeto real no **Bootcamp Claude Code** (1 dia). Se o projeto vingar, evolui depois.
 
 ## Sobre o projeto
 
-*A ser preenchido via `/startup` no primeiro prompt.*
-
-- **Problema**: [o que dói hoje na Moon]
-- **Hipótese de solução**: [como essa ferramenta resolve]
+- **Problema**: Setor de compras sem visão consolidada da cadeia de fornecimento — ausência de matriz de risco por produto, planejamento de compras desconectado das metas, sem base estruturada de performance de fornecedores, KPIs limitados (só OTD em planilha isolada), sem controle de homologação e sistemas fragmentados (TOTVS, Bling, ClickUp, planilha manual).
+- **Hipótese de solução**: Dashboard centralizado de fornecimento que integra dados de pedidos, estoque e fornecedores para gerar matriz de risco por produto, projeção de compras vs metas, acompanhamento de lead time e capacidade, além de consolidar KPIs (OTD, pagamento, performance e prospecção) para tomada de decisão estratégica em compras.
 - **PRD completo**: [`docs/prd.md`](docs/prd.md) — leia ANTES de propor código
 - **Briefing**: [`context/briefing.md`](context/briefing.md)
 - **Rascunho do pitch**: [`docs/pitch.md`](docs/pitch.md)

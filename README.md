@@ -1,6 +1,12 @@
-# [Seu Nome] — Projeto Bootcamp Claude Code
+# Ana Luiza Marques Machado — Projeto Bootcamp Claude Code
 
 > Bootcamp Claude Code — Moon Ventures (2026)
+
+## Sobre o projeto
+
+- **Problema**: Setor de compras sem visão consolidada da cadeia de fornecimento — ausência de matriz de risco por produto, planejamento de compras desconectado das metas, sem base estruturada de performance de fornecedores e KPIs limitados (sistemas fragmentados entre TOTVS, Bling, ClickUp e planilhas manuais).
+- **Solução proposta**: Dashboard centralizado de fornecimento que integra dados de pedidos, estoque e fornecedores para gerar matriz de risco por produto, projeção de compras vs metas, acompanhamento de lead time e capacidade, além de consolidar KPIs para tomada de decisão estratégica em compras.
+- **Slug**: `central-fornecimento`
 
 _Última atualização: 21/04 10:52_
 
