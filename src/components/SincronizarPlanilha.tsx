@@ -103,7 +103,7 @@ export default function SincronizarPlanilha() {
     <div className="space-y-6">
       <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-3">
         <h2 className="text-base font-semibold text-gray-900">Planilha conectada</h2>
-        <p className="text-sm text-gray-500">Aba: <span className="font-medium">Metas Cloude</span></p>
+        <p className="text-sm text-gray-500">Aba: <span className="font-medium">Meta Cloude</span></p>
         <p className="text-xs text-gray-400 font-mono break-all">
           docs.google.com/spreadsheets/d/1VRjfwP7MpzKnXNNuUKtmGumaRPs7nHb3-N_3PVcYwjM
         </p>
