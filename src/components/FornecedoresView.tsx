@@ -5,14 +5,20 @@ import { supabase } from '@/lib/supabase'
 import { parseFornecedoresTab, parsePedidosTab } from '@/lib/parseFornecedoresSheet'
 import type { Produto } from '@/types/produto'
 import type { Fornecedor, FornecedorInsert } from '@/types/fornecedor'
-import type { Pedido } from '@/types/pedido'
+
+interface ResumoFornecedor {
+  nome: string
+  totalPendente: number
+  proximaEntrega: string | null
+  qtdLinhas: number
+}
 
 const EMPTY_FORM = { nome: '', lead_time_dias: 0, capacidade_mensal: 0 }
 
 export default function FornecedoresView() {
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const [resumoPedidos, setResumoPedidos] = useState<ResumoFornecedor[]>([])
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [salvando, setSalvando] = useState(false)
@@ -23,6 +29,34 @@ export default function FornecedoresView() {
   const [syncPreview, setSyncPreview] = useState<{ fornecedores: number; fornecedoresSkip: number; pedidos: number } | null>(null)
   const [syncErro, setSyncErro] = useState('')
 
+  async function carregarPedidos() {
+    const { data } = await supabase
+      .from('pedidos')
+      .select('fornecedor_nome, qtd_pendente, previsao_atual')
+      .gt('qtd_pendente', 0)
+
+    if (!data) { setResumoPedidos([]); return }
+
+    // Agrupa por fornecedor_nome
+    const mapa = new Map<string, ResumoFornecedor>()
+    for (const row of data) {
+      const nome = row.fornecedor_nome?.trim() || '(sem fornecedor)'
+      const atual = mapa.get(nome)
+      if (!atual) {
+        mapa.set(nome, { nome, totalPendente: row.qtd_pendente, proximaEntrega: row.previsao_atual, qtdLinhas: 1 })
+      } else {
+        atual.totalPendente += row.qtd_pendente
+        atual.qtdLinhas += 1
+        if (row.previsao_atual && (!atual.proximaEntrega || row.previsao_atual < atual.proximaEntrega)) {
+          atual.proximaEntrega = row.previsao_atual
+        }
+      }
+    }
+
+    const lista = Array.from(mapa.values()).sort((a, b) => b.totalPendente - a.totalPendente)
+    setResumoPedidos(lista)
+  }
+
   const carregarBase = useCallback(async () => {
     const [{ data: prods }, { data: forns }] = await Promise.all([
       supabase.from('produtos').select('*').order('nome'),
@@ -32,23 +66,10 @@ export default function FornecedoresView() {
     setProdutos(lista)
     setFornecedores(forns ?? [])
     if (!produtoSelecionado && lista.length > 0) setProdutoSelecionado(lista[0])
-  }, [produtoSelecionado])
+    await carregarPedidos()
+  }, [produtoSelecionado]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { carregarBase() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Carrega pedidos sempre que o produto selecionado ou fornecedores mudam
-  useEffect(() => {
-    if (!produtoSelecionado) { setPedidos([]); return }
-    const nomes = fornecedores.filter((f) => f.produto_id === produtoSelecionado.id).map((f) => f.nome)
-    if (nomes.length === 0) { setPedidos([]); return }
-    supabase
-      .from('pedidos')
-      .select('*')
-      .in('fornecedor_nome', nomes)
-      .gt('qtd_pendente', 0)
-      .order('previsao_atual', { ascending: true })
-      .then(({ data }) => setPedidos(data ?? []))
-  }, [produtoSelecionado, fornecedores])
 
   const fornsDoP = produtoSelecionado
     ? fornecedores.filter((f) => f.produto_id === produtoSelecionado.id)
@@ -154,7 +175,7 @@ export default function FornecedoresView() {
     setFornecedores((prev) => prev.filter((f) => f.id !== id))
   }
 
-  const totalPendente = pedidos.reduce((s, p) => s + p.qtd_pendente, 0)
+  const totalGeralPendente = resumoPedidos.reduce((s, r) => s + r.totalPendente, 0)
 
   return (
     <div className="space-y-6">
@@ -283,52 +304,6 @@ export default function FornecedoresView() {
                 </div>
               )}
 
-              {/* Entregas pendentes */}
-              {pedidos.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-gray-800">Entregas pendentes</h3>
-                    <span className="text-xs text-gray-500">
-                      {pedidos.length} pedidos · <span className="font-medium text-gray-700">{totalPendente.toLocaleString('pt-BR')} unidades pendentes</span>
-                    </span>
-                  </div>
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
-                        <tr>
-                          <th className="px-4 py-3 text-left">Produto (SKU)</th>
-                          <th className="px-4 py-3 text-left">Pedido</th>
-                          <th className="px-4 py-3 text-center">Qtd solicitada</th>
-                          <th className="px-4 py-3 text-center">Qtd pendente</th>
-                          <th className="px-4 py-3 text-center">Previsão de entrega</th>
-                          <th className="px-4 py-3 text-left">Fornecedor</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {pedidos.map((p) => (
-                          <tr key={p.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 text-gray-800 max-w-[200px] truncate" title={p.produto_sku}>{p.produto_sku}</td>
-                            <td className="px-4 py-2 text-gray-600">{p.pedido}</td>
-                            <td className="px-4 py-2 text-center">{p.qtd_solicitada.toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-2 text-center font-medium text-orange-700">{p.qtd_pendente.toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-2 text-center">
-                              {p.previsao_atual
-                                ? new Date(p.previsao_atual + 'T00:00:00').toLocaleDateString('pt-BR')
-                                : '—'}
-                            </td>
-                            <td className="px-4 py-2 text-gray-500 text-xs">{p.fornecedor_nome}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {fornsDoP.length > 0 && pedidos.length === 0 && (
-                <p className="text-sm text-gray-400">Nenhuma entrega pendente para este fornecedor.</p>
-              )}
-
               {/* Form adicionar fornecedor manualmente */}
               <form onSubmit={adicionarFornecedor} className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
                 <h3 className="text-sm font-semibold text-gray-800">Adicionar fornecedor manualmente</h3>
@@ -355,6 +330,49 @@ export default function FornecedoresView() {
           )}
         </div>
       </div>
+
+      {/* ── Entregas pendentes por fornecedor (global) ── */}
+      {resumoPedidos.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-gray-900">Entregas pendentes por fornecedor</h2>
+            <span className="text-sm text-gray-500">
+              {resumoPedidos.length} fornecedores ·{' '}
+              <span className="font-medium text-gray-700">
+                {totalGeralPendente.toLocaleString('pt-BR')} unidades no total
+              </span>
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left">Fornecedor</th>
+                  <th className="px-4 py-3 text-center">Pedidos em aberto</th>
+                  <th className="px-4 py-3 text-right">Total pendente (unid.)</th>
+                  <th className="px-4 py-3 text-center">Próxima entrega prevista</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {resumoPedidos.map((r) => (
+                  <tr key={r.nome} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-900">{r.nome}</td>
+                    <td className="px-4 py-3 text-center text-gray-600">{r.qtdLinhas}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-orange-700">
+                      {r.totalPendente.toLocaleString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-600">
+                      {r.proximaEntrega
+                        ? new Date(r.proximaEntrega + 'T00:00:00').toLocaleDateString('pt-BR')
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
