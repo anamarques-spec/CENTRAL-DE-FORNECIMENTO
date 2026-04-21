@@ -21,3 +21,7 @@ CREATE POLICY "acesso_publico_produtos"
   ON produtos FOR ALL
   USING (true)
   WITH CHECK (true);
+
+-- Migration: suporte a metas (rodar se a tabela já existe)
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS meta_faturamento_anual BIGINT DEFAULT 0;
+ALTER TABLE produtos ADD CONSTRAINT IF NOT EXISTS produtos_nome_unique UNIQUE (nome);

@@ -14,6 +14,7 @@ const EMPTY: ProdutoInsert = {
   estoque_atual_dias: 0,
   volume_projetado_mensal: 0,
   capacidade_fornecedor_mensal: 0,
+  meta_faturamento_anual: 0,
 }
 
 interface Props {

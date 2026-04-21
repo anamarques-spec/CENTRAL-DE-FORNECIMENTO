@@ -134,6 +134,7 @@ export default function MatrizRiscoView() {
                 <th className="px-4 py-3 text-center">Estoque (dias)</th>
                 <th className="px-4 py-3 text-center">Vol. projetado</th>
                 <th className="px-4 py-3 text-center">Capacidade</th>
+                <th className="px-4 py-3 text-right">Meta anual</th>
                 <th className="px-4 py-3 text-center">Risco</th>
               </tr>
             </thead>
@@ -164,6 +165,11 @@ export default function MatrizRiscoView() {
                       }>
                         {p.capacidade_fornecedor_mensal.toLocaleString('pt-BR')}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600">
+                      {p.meta_faturamento_anual > 0
+                        ? p.meta_faturamento_anual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+                        : '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${RISCO_CLASSES[risco]}`}>

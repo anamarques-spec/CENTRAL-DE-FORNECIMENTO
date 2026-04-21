@@ -12,6 +12,7 @@ export interface Produto {
   estoque_atual_dias: number
   volume_projetado_mensal: number
   capacidade_fornecedor_mensal: number
+  meta_faturamento_anual: number
   created_at: string
 }
 
