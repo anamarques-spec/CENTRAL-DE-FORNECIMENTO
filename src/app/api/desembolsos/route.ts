@@ -47,6 +47,7 @@ export interface Parcela {
   produto: string
   data_vencimento: string
   valor: number
+  dia: number
 }
 
 export interface MesDesembolso {
@@ -135,6 +136,7 @@ export async function GET() {
           produto: cols[I.produto] ?? '',
           data_vencimento: toISO(dataParcela),
           valor: valorParcela,
+          dia,
         })
       }
     }
