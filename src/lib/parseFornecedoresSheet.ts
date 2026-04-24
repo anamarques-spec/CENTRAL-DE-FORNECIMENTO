@@ -11,6 +11,7 @@ export interface PedidoRow {
   fornecedorNome: string
   qtdSolicitada: number
   qtdPendente: number
+  qtdEnderecada: number
   previsaoAtual: string | null
   dataCompra: string | null
 }
@@ -49,9 +50,9 @@ export function parseFornecedoresTab(csvText: string): FornecedorRow[] {
   return result
 }
 
-// Aba "Entregas pendentes": índices relevantes:
+// Aba "Entregas pendentes":
 // 0=Data_de_Compra, 1=Pedido, 2=Produto(SKU), 5=Qtd_Solicitada,
-// 9=Previsao_Atual, 10=Cod, 13=Qtd_Pendente_ofc, 14=source_spreadsheet(fornecedor)
+// 9=Previsao_Atual, 10=Cod, 12=Qtd_Enderecada, 13=Qtd_Pendente_ofc, 14=source_spreadsheet(fornecedor)
 export function parsePedidosTab(csvText: string): PedidoRow[] {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim())
   const result: PedidoRow[] = []
@@ -66,6 +67,7 @@ export function parsePedidosTab(csvText: string): PedidoRow[] {
       fornecedorNome: cols[14] ?? '',
       qtdSolicitada: parseInt(cols[5]) || 0,
       qtdPendente: parseInt(cols[13]) || 0,
+      qtdEnderecada: parseInt(cols[12]) || 0,
       previsaoAtual: parseDateBR(cols[9] ?? ''),
       dataCompra: parseDateBR(cols[0] ?? ''),
     })

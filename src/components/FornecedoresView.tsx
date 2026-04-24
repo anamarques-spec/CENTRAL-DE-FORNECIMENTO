@@ -143,6 +143,7 @@ export default function FornecedoresView() {
           fornecedor_nome: r.fornecedorNome,
           qtd_solicitada: r.qtdSolicitada,
           qtd_pendente: r.qtdPendente,
+          qtd_enderecada: r.qtdEnderecada,
           previsao_atual: r.previsaoAtual,
           data_compra: r.dataCompra,
         }))
