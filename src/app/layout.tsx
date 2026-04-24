@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/fornecedores" className="text-sm text-gray-600 hover:text-gray-900">
               Fornecedores
             </a>
+            <a href="/desembolsos" className="text-sm text-gray-600 hover:text-gray-900">
+              Desembolsos
+            </a>
           </div>
         </nav>
         {children}
