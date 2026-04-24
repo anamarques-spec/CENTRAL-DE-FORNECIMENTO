@@ -46,6 +46,7 @@ export interface Parcela {
   fornecedor: string
   produto: string
   data_vencimento: string
+  data_registro: string
   valor: number
   dia: number
 }
@@ -135,6 +136,7 @@ export async function GET() {
           fornecedor: cols[I.fornecedor] ?? '',
           produto: cols[I.produto] ?? '',
           data_vencimento: toISO(dataParcela),
+          data_registro: dataRegistroStr,
           valor: valorParcela,
           dia,
         })

@@ -2,8 +2,9 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
 import type { DesembolsosResponse, MesDesembolso, Parcela } from '@/app/api/desembolsos/route'
 
@@ -109,6 +110,36 @@ export default function DesembolsosView() {
     })
     if (medias.length === 0) return 0
     return Math.round(medias.reduce((s, m) => s + m, 0) / medias.length)
+  }, [parcelasFiltradas])
+
+  // Evolução do prazo médio DDL por mês de formalização (data_registro)
+  const evolucaoDDL = useMemo(() => {
+    // Agrupa por (pedido, fornecedor) → coleta dias únicos e data_registro
+    const ordens = new Map<string, { mesRegistro: string; dias: Set<number> }>()
+    for (const p of parcelasFiltradas) {
+      const key = `${p.pedido}|||${p.fornecedor}`
+      if (!ordens.has(key)) {
+        const mesRegistro = p.data_registro ? p.data_registro.slice(0, 7) : ''
+        ordens.set(key, { mesRegistro, dias: new Set() })
+      }
+      ordens.get(key)!.dias.add(p.dia)
+    }
+    // Agrupa por mês de formalização → lista de prazos médios por pedido
+    const porMes = new Map<string, number[]>()
+    for (const { mesRegistro, dias } of ordens.values()) {
+      if (!mesRegistro) continue
+      const arr = Array.from(dias)
+      const media = arr.reduce((s, d) => s + d, 0) / arr.length
+      if (!porMes.has(mesRegistro)) porMes.set(mesRegistro, [])
+      porMes.get(mesRegistro)!.push(media)
+    }
+    return Array.from(porMes.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, medias]) => ({
+        mes,
+        label: nomeMesCurto(mes),
+        ddl: Math.round(medias.reduce((s, m) => s + m, 0) / medias.length),
+      }))
   }, [parcelasFiltradas])
 
   // Combinações produto com totais por mês (para tabela de detalhamento)
@@ -226,6 +257,49 @@ export default function DesembolsosView() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Evolução DDL por mês de formalização */}
+      {evolucaoDDL.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-gray-900">Evolução do prazo médio (DDL) por mês de formalização</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Pedidos agrupados pelo mês em que foram registrados — eixo Y: DDL médio do grupo
+            </p>
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={evolucaoDDL} margin={{ top: 16, right: 40, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                width={48}
+                domain={['auto', 'auto']}
+                tickFormatter={(v) => `${v}d`}
+              />
+              <Tooltip
+                formatter={(v) => [`${v} DDL`, 'Prazo médio']}
+                labelFormatter={(l) => `Mês: ${l}`}
+              />
+              <ReferenceLine
+                y={75}
+                stroke="#ef4444"
+                strokeDasharray="6 3"
+                label={{ value: 'Meta: 75 DDL', position: 'right', fontSize: 11, fill: '#ef4444' }}
+              />
+              <Line
+                type="monotone"
+                dataKey="ddl"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ r: 4, fill: '#3b82f6' }}
+                activeDot={{ r: 6 }}
+                name="DDL médio"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Tabela mensal com expansão */}
       {mesesFiltrados.length > 0 && (
